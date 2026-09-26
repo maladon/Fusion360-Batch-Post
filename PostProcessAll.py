@@ -5,7 +5,7 @@ import adsk.core, adsk.fusion, adsk.cam, traceback, shutil, json, os, os.path, t
 
 # Version number of settings as saved in documents and settings file
 # update this whenever settings content changes
-version = 11
+version = 12
 
 # Initial default values of settings
 defaultSettings = {
@@ -20,6 +20,7 @@ defaultSettings = {
     "combineTool" : False,
     "fastZ" : False,
     "toolChange" : "M9 G30",
+    "addM6" : False,
     "numericName" : False,
     "endCodes" : "M5 M9 M30",
     "onlySelected" : False,
@@ -515,7 +516,25 @@ class CommandEventHandler(adsk.core.CommandCreatedEventHandler):
             )
             label.tooltip = input.tooltip
             label.tooltipDescription = input.tooltipDescription
-           
+
+            # check box to add M6 to tool change commands
+            input = inputGroup.children.addBoolValueInput("addM6",
+                                                          "Add M6 to tool change (T) commands",
+                                                          True,
+                                                          "",
+                                                          docSettings["addM6"])
+            input.isEnabled = docSettings["splitSetup"] # enable only if using individual operations
+            input.tooltip = "Add M6 to Tool Change Commands"
+            input.tooltipDescription = (
+                "Add M6 (tool change) to each command that selects a tool, "
+                "changing <b>T1</b> to <b>T1 M6</b>. Without M6, some controllers "
+                "select the new tool but never stop to change it."
+                "<p>This applies to the first tool as well as to later tool "
+                "changes. Commands that already include M6 are left alone. Any "
+                "G-code for tool change entered above is still placed on the "
+                "line before.</p>"
+            )
+
             # text box as a label for operation end commands
             input = inputGroup.children.addTextBoxCommandInput("endLabel", 
                                                                "", 
@@ -739,6 +758,7 @@ class CommandInputChangedHandler(adsk.core.InputChangedEventHandler):
                 inputs.itemById("combineTool").isEnabled = input.value
                 inputs.itemById("toolChange").isEnabled = input.value
                 inputs.itemById("toolLabel").isEnabled = input.value
+                inputs.itemById("addM6").isEnabled = input.value
                 inputs.itemById("endCodes").isEnabled = input.value
                 inputs.itemById("endLabel").isEnabled = input.value
                 inputs.itemById("fastZ").isEnabled = input.value
@@ -1037,6 +1057,9 @@ def PostProcessSetup(fname, setup, setupFolder, docSettings, program):
                 toolChange = match["line"]
                 # split into individual lines to add line numbers
                 toolChange = toolChange.splitlines(True)
+        fAddM6 = docSettings["addM6"]
+        regToolWord = re.compile(r"T[0-9]+", re.IGNORECASE)
+        regM6 = re.compile(r"M0*6(?![0-9])", re.IGNORECASE)   # M6 or M06, not M60
         # Parse end code list, splitting into G-codes and M-codes
         endCodes = docSettings["endCodes"]
         endGcodes = re.findall("G([0-9]+)", endCodes)
@@ -1197,6 +1220,9 @@ def PostProcessSetup(fname, setup, setupFolder, docSettings, program):
                                 lineNum += constLineNumInc
                         else:
                             fileBody.write(toolChange)
+                    # Add M6 right after the T word unless already present outside a comment
+                    if fAddM6 and regM6.search(line.split("(")[0]) == None:
+                        line = regToolWord.sub(r"\g<0> M6", line, 1)
                     break
 
                 if fFirst or line[0] == "(":
