@@ -1222,12 +1222,15 @@ def PostProcessSetup(fname, setup, setupFolder, docSettings, program):
             fLockSpeed = False
 
             # Note that match, line, and fNum are already set
+            # The tool line starts the body, so it can't start the ending sequence
+            # even if it has one of the end codes, such as "M9 T1".
+            fToolLine = True
             while True:
                 # End of program marker?
                 endMark = match["M"]
                 if endMark != None:
                     endMark = int(endMark)
-                    if endMark in endMcodeSet:
+                    if endMark in endMcodeSet and not fToolLine:
                         break
                     # When M49/M48 is used to turn off speed changes, disable fast moves as well
                     if endMark == 49:
@@ -1237,7 +1240,7 @@ def PostProcessSetup(fname, setup, setupFolder, docSettings, program):
                 endMark = match["G"]
                 if endMark != None:
                     endMark = int(endMark)
-                    if endMark in endGcodeSet:
+                    if endMark in endGcodeSet and not fToolLine:
                         break
 
                 if fFastZ:
@@ -1339,6 +1342,7 @@ def PostProcessSetup(fname, setup, setupFolder, docSettings, program):
                     fileBody.write("N" + str(lineNum) + " ")
                     lineNum += constLineNumInc
                 fileBody.write(line)
+                fToolLine = False
                 lineFull = fileOp.readline()
                 if len(lineFull) == 0:
                     break
